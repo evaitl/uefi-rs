@@ -42,6 +42,7 @@ members = [
     "uefi-macros",
     "uefi-services",
     "uefi-test-runner",
+    "loader",
 ]
 
 [profile.dev]
