@@ -98,3 +98,29 @@ see things.  Tagging this as "hi 1" and pushing.
 
 Next, I'll look at loading the elf file into memory. 
 
+[Here](https://github.com/rpjohnst/kernel/blob/5e95b48d6e12b4cb03aa3c770160652a221ff085/src/boot.c)
+is a C version that is kind of what we need. It loads an elf binary
+into memory and runs it. It doesn't however do signature checking.
+
+I think I'll copy/convert this code for now and add the signature
+checking later.
+
+I deleted the uefi-loader repo because I think it will confuse people.
+All work is in this repo (and the min-kernel repos).
+
+Looking at the email I sent the other day, the rust libraries I saw for signatures are
+
+- [signature](https://crates.io/crates/signature)
+- [digest](https://lib.rs/crates/digest)
+- [minisign](https://lib.rs/crates/minisign)
+
+And for elf headers:
+
+- [elf_rs](https://lib.rs/crates/elf_rs)
+- [xmas-elf](https://crates.io/crates/xmas-elf)
+- [goblin](https://crates.io/crates/xmas-elf)
+
+
+
+
+
