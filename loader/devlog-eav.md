@@ -89,7 +89,12 @@ directory and add a startup.nsh in esp with:
 
 as the contents?
 
-
 Let's start trimming down loader to a "hello world", make sure it
 runs, then add in the stuff we need...
+
+Says hi and reboots OK, at least under qemu. Resetting the console
+clears any previous output, so we need to add a stall if you want to
+see things.  Tagging this as "hi 1" and pushing. 
+
+Next, I'll look at loading the elf file into memory. 
 

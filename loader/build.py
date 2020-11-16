@@ -93,7 +93,7 @@ def build(*test_flags):
     'Builds the test crate.'
 
     build_args = [
-        '--package', 'uefi-test-runner',
+        '--package', 'loader',
         *test_flags,
     ]
 
@@ -106,7 +106,7 @@ def build(*test_flags):
     run_build(*build_args)
 
     # Copy the built test runner file to the right directory for running tests.
-    built_file = build_dir() / 'uefi-test-runner.efi'
+    built_file = build_dir() / 'loader.efi'
 
     boot_dir = esp_dir() / 'EFI' / 'Boot'
     boot_dir.mkdir(parents=True, exist_ok=True)
