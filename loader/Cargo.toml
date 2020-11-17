@@ -11,6 +11,8 @@ uefi-services = { path = "../uefi-services" }
 
 log = { version = "0.4.11", default-features = false }
 
+elf_rs = "0.1.3"
+
 # When building using Cargo's `build-std` feature, the `mem` feature of `compiler-builtins`
 # does not automatically get enabled. Therefore, we have to manually add support for
 # the memory functions.

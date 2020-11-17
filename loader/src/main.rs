@@ -18,6 +18,22 @@ use core::slice;
 use uefi::prelude::*;
 use uefi::table::boot::MemoryDescriptor;
 
+fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64>{
+    use elf_rs::*;
+    if let Elf::Elf64(e) = Elf::from_bytes(buf).unwrap() {
+        for p in e.program_header_iter() {
+            let ph=p.ph;
+            if ph.ph_type()==ProgramType::LOAD {
+                let offset=ph.offset() as usize;
+                let paddr=ph.paddr() as usize;
+                let fsize=ph.filesz() as usize;
+                unsafe{bt.memmove(paddr as *mut u8, &buf[offset], fsize)};
+            }
+        }
+        return Some(e.header().entry_point());
+    }
+    None
+}
 
 fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     let bt = st.boot_services();
@@ -68,6 +84,7 @@ fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     // Move Loadable segments
     // x86_64: Make sure they are in the 4M region at 0x100000?
 
+    locate_elf(&bt,&image_buf);
     
     // Get memory map
 
