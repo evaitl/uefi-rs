@@ -120,6 +120,10 @@ And for elf headers:
 - [xmas-elf](https://crates.io/crates/xmas-elf)
 - [goblin](https://crates.io/crates/xmas-elf)
 
+Building docs command: `cargo doc -Zbuild-std --target=x86_64-unknown-uefi --open`
+
+End of the day checkin. Fussing with stuff. 
+
 
 
 
