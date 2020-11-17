@@ -12,37 +12,69 @@ extern crate alloc;
 extern crate rlibc;
 
 use core::mem;
+use core::slice;
 use uefi::prelude::*;
-use uefi::table::boot::MemoryDescriptor;
 use uefi::proto::media::file::FileHandle;
-use uefi::Result;
+use uefi::table::boot::MemoryDescriptor;
 
-fn load_kernel(image: Handle, bt: &BootServices) -> Result<FileHandle>{
+fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
+    let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
-    use uefi::proto::media::file::FileMode;
-    use uefi::proto::media::file::FileAttribute;
-    use uefi::proto::media::fs::SimpleFileSystem;
     use uefi::proto::media::file::File;
-    use uefi::table::boot::MemoryType;
+    use uefi::proto::media::file::FileAttribute;
+    use uefi::proto::media::file::FileMode;
+    use uefi::proto::media::fs::SimpleFileSystem;
     use uefi::table::boot::AllocateType;
-    let li=bt.handle_protocol::<LoadedImage>(image)?.unwrap().get();
-    let fs=bt.handle_protocol::<SimpleFileSystem>(li.as_ref()
-                                                  .ok_or(Status::WARN_FILE_SYSTEM)?
-                                                  .device())?.unwrap().get();
-    let kernel_file_handle=
-        fs.as_ref().ok_or(Status::WARN_FILE_SYSTEM)?.open_volume()?.unwrap()
-        .open("kernel",FileMode::Read,FileAttribute::READ_ONLY);
+    use uefi::table::boot::MemoryType;
+
+    let root_device = bt
+        .handle_protocol::<LoadedImage>(image)
+        .expect("No LoadedImage protocol")
+        .expect("No LoadedImage Protocol 2")
+        .get()
+        .as_ref()
+        .expect("No loadedimage 3")
+        .device();
+    let mut kernel_file = bt
+        .handle_protocol::<SimpleFileSystem>(root_device)
+        .expect("no sfs 1")
+        .expect("no sfs 2")
+        .get()
+        .as_ref()
+        .expect("no sfs 3")
+        .open_volume()
+        .expect("open volume failure")
+        .expect("open volume failure 2");
+    let fi_buf = unsafe {
+        slice::from_raw_parts_mut(
+            bt.allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 1)
+                .expect("Couldn't allocate info page")
+                .expect("Couldn't allocate info page 2") as *mut u8,
+            4096,
+        )
+    };
+    use uefi::proto::media::file::FileInfo;
+
+    kernel_file
+        .get_info::<FileInfo>(fi_buf)
+        .expect("Couldn't get file info");
+
+    let kernel_file_handle = kernel_file.open("kernel", FileMode::Read, FileAttribute::READ_ONLY);
     // Reserve location for final kernel so it doesn't get used by loaded file.
-    if cfg!(target_arch="x86_64") {
-        // On x86 save 4M (1024 pages) at 0x100000. 
-        bt.allocate_pages(AllocateType::Address(0x100000),MemoryType::LOADER_DATA,1024);
-    } else if cfg!(target_arch="aarch64") {
+    if cfg!(target_arch = "x86_64") {
+        // On x86 save 4M (1024 pages) at 0x100000.
+        bt.allocate_pages(
+            AllocateType::Address(0x100000),
+            MemoryType::LOADER_DATA,
+            1024,
+        );
+    } else if cfg!(target_arch = "aarch64") {
         // XXX
     }
     // Get the file size
 
     // Get space for the file
-//    let file_data_ptr=bt.allocate_pool(AnyPages,XXX);
+    //    let file_data_ptr=bt.allocate_pool(AnyPages,XXX);
     // Read the file
 
     // Check the signature
@@ -58,16 +90,16 @@ fn load_kernel(image: Handle, bt: &BootServices) -> Result<FileHandle>{
 
     // Jump to start address
 
-
     // Shouldn't get here.
-    Status::LOAD_ERROR.into_with_err("deadbeaf")
+    error!("How'd I get here?");
+    shutdown(image, st);
 }
 
 #[entry]
 fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     // Initialize utilities (logging, memory allocation...)
     uefi_services::init(&st).expect_success("Failed to initialize utilities");
-    let bt=st.boot_services();
+    let bt = st.boot_services();
     // Reset the console before running all the other tests.
     st.stdout()
         .reset(false)
@@ -76,10 +108,10 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     // Ensure the tests are run on a version of UEFI we support.
     check_revision(st.uefi_revision());
     st.boot_services().stall(3_000_000);
-    
-    load_kernel(image,bt);
+
+    load_kernel(image, st);
     st.boot_services().stall(3_000_000);
-    
+
     shutdown(image, st);
 }
 
@@ -116,3 +148,9 @@ fn shutdown(image: uefi::Handle, st: SystemTable<Boot>) -> ! {
     let rt = unsafe { st.runtime_services() };
     rt.reset(ResetType::Shutdown, Status::SUCCESS, None);
 }
+
+/*
+Local Variables:
+compile-command: "cargo build -Zbuild-std --target x86_64-unknown-uefi"
+End:
+*/

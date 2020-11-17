@@ -1,3 +1,16 @@
+Tue Nov 17:
+
+
+Sadly the uefi Result type is private, so I can't create a function
+that returns a result and deal with arbitrary code that mixes uefi
+Results with Option and other results.
+
+I'll just hack through a `load_kernel()` function for now. It should
+be factored and the error handling cleaned up.
+
+
+
+
 Mon Nov 16:
 
 Looking for an arm64 ovmf firmware. I don't want to hassle with a
