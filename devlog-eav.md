@@ -9,7 +9,20 @@ I'll just hack through a `load_kernel()` function for now. It should
 be factored and the error handling cleaned up.
 
 
+OK. Loader is written, but not tested. I'm using
+[elf_rs](https://crates.io/crates/elf_rs) for the elf parsing.
 
+
+I'll take a break, then test the loader. 
+
+I think I'll grab the
+[ed25519_dalek](https://docs.rs/ed25519-dalek/1.0.1/ed25519_dalek/)
+package and create a signing tool, then add the code to the loader to
+check the signature.
+
+
+None of this really matters though. We just have to do some slides and
+we have more than enough to say for slides.
 
 Mon Nov 16:
 
