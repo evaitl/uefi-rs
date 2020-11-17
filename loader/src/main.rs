@@ -2,7 +2,6 @@
 #![no_main]
 #![feature(asm)]
 #![feature(abi_efiapi)]
-
 #![allow(unused_imports)] // XXX remove later
 
 #[macro_use]
@@ -13,23 +12,23 @@ extern crate alloc;
 // Keep this line to ensure the `mem*` functions are linked in.
 extern crate rlibc;
 
+use core::ffi::c_void;
 use core::mem;
 use core::slice;
-use core::ffi::c_void;
 use uefi::prelude::*;
 use uefi::table::boot::MemoryDescriptor;
 
-fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64>{
+fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64> {
     // x86_64: Make sure they are in the 4M region at 0x100000?
     use elf_rs::*;
     if let Elf::Elf64(e) = Elf::from_bytes(buf).unwrap() {
         for p in e.program_header_iter() {
-            let ph=p.ph;
-            if ph.ph_type()==ProgramType::LOAD {
-                let offset=ph.offset() as usize;
-                let paddr=ph.paddr() as usize;
-                let fsize=ph.filesz() as usize;
-                unsafe{bt.memmove(paddr as *mut u8, &buf[offset], fsize)};
+            let ph = p.ph;
+            if ph.ph_type() == ProgramType::LOAD {
+                let offset = ph.offset() as usize;
+                let paddr = ph.paddr() as usize;
+                let fsize = ph.filesz() as usize;
+                unsafe { bt.memmove(paddr as *mut u8, &buf[offset], fsize) };
             }
         }
         return Some(e.header().entry_point());
@@ -37,28 +36,36 @@ fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64>{
     None
 }
 
-fn load_kernel(st: & SystemTable<Boot>) {
+fn load_kernel(st: &SystemTable<Boot>) {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::file::File;
     use uefi::proto::media::file::FileAttribute;
+    use uefi::proto::media::file::FileInfo;
     use uefi::proto::media::file::FileMode;
+    use uefi::proto::media::file::RegularFile;
     use uefi::proto::media::fs::SimpleFileSystem;
     use uefi::table::boot::AllocateType;
     use uefi::table::boot::MemoryType;
-    use uefi::proto::media::file::RegularFile;
-    use uefi::proto::media::file::FileInfo;
-    let sfs=bt.locate_protocol::<SimpleFileSystem>().expect("sfs failure").unwrap();
-    let sfs=unsafe {&mut *sfs.get() };
-    let mut directory=sfs.open_volume().unwrap().unwrap();
-    let kernel_file=directory.open("kernel",
-                                   FileMode::Read,FileAttribute::empty()).expect("Open failure").unwrap();
-    let mut kernel_file=unsafe{RegularFile::new(kernel_file)};
-    
-    let mut info_buffer=vec![0;256];
-    let file_size=
-        kernel_file.get_info::<FileInfo>(&mut info_buffer).expect("File info problem").unwrap().file_size();
-    
+    let sfs = bt
+        .locate_protocol::<SimpleFileSystem>()
+        .expect("sfs failure")
+        .unwrap();
+    let sfs = unsafe { &mut *sfs.get() };
+    let mut directory = sfs.open_volume().unwrap().unwrap();
+    let kernel_file = directory
+        .open("kernel", FileMode::Read, FileAttribute::empty())
+        .expect("Open failure")
+        .unwrap();
+    let mut kernel_file = unsafe { RegularFile::new(kernel_file) };
+
+    let mut info_buffer = vec![0; 256];
+    let file_size = kernel_file
+        .get_info::<FileInfo>(&mut info_buffer)
+        .expect("File info problem")
+        .unwrap()
+        .file_size();
+
     drop(info_buffer);
     // Reserve location for final kernel so it doesn't get used by loaded file.
     if cfg!(target_arch = "x86_64") {
@@ -67,56 +74,57 @@ fn load_kernel(st: & SystemTable<Boot>) {
             AllocateType::Address(0x100000),
             MemoryType::LOADER_DATA,
             1024,
-        ).expect("Dummy memory alloc failed").unwrap();
-        unsafe{bt.memset(0x100000 as *mut u8, 4*1024*1024,0)};
+        )
+        .expect("Dummy memory alloc failed")
+        .unwrap();
+        unsafe { bt.memset(0x100000 as *mut u8, 4 * 1024 * 1024, 0) };
     } else if cfg!(target_arch = "aarch64") {
         // XXX
     }
 
-    let mut image_buf=vec![0u8;file_size as usize];
+    let mut image_buf = vec![0u8; file_size as usize];
     // Read the file
 
-    let read_size=kernel_file.read(image_buf.get_mut(..).unwrap()).expect("Read error").unwrap() as u64;
+    let read_size = kernel_file
+        .read(image_buf.get_mut(..).unwrap())
+        .expect("Read error")
+        .unwrap() as u64;
     assert!(read_size == file_size);
 
     // Check the signature
 
     // XXX
-    
+
     // Move Loadable segments
 
-    let entry = locate_elf(&bt,&image_buf).expect("No program entry");
-    
+    let entry = locate_elf(&bt, &image_buf).expect("No program entry");
+
     // Get memory map
-    let map_vec=get_mem_map(&st);
-    let mem_map=map_vec.as_ptr() as *const c_void;
+    let map_vec = get_mem_map(&st);
+    let mem_map = map_vec.as_ptr() as *const c_void;
     // Get acpi tables
     let acpi_table = get_acpi_table(&st);
 
     // Exit boot services
 
-    
     // Jump to start address
     type KernelEntry = extern "C" fn(*const c_void, *const c_void) -> c_void;
-    let entry=unsafe{mem::transmute::<u64,KernelEntry>(entry)};
+    let entry = unsafe { mem::transmute::<u64, KernelEntry>(entry) };
 
-
-    
-    entry(acpi_table,mem_map);
+    entry(acpi_table, mem_map);
     // Shouldn't get here.
     error!("How'd I get here?");
 }
 use alloc::vec::Vec;
-fn get_mem_map(st: &SystemTable<Boot>) -> Vec<u8>{
-    
-    let bt=st.boot_services();
-    let map_sz=bt.memory_map_size();
-    let buf_sz=map_sz+8*mem::size_of::<MemoryDescriptor>();
-    let mut buffer=Vec::with_capacity(buf_sz);
-    unsafe{
+fn get_mem_map(st: &SystemTable<Boot>) -> Vec<u8> {
+    let bt = st.boot_services();
+    let map_sz = bt.memory_map_size();
+    let buf_sz = map_sz + 8 * mem::size_of::<MemoryDescriptor>();
+    let mut buffer = Vec::with_capacity(buf_sz);
+    unsafe {
         buffer.set_len(buf_sz);
     }
-     let (_key, desc_iter) = bt
+    let (_key, desc_iter) = bt
         .memory_map(&mut buffer)
         .expect_success("Failed to retrieve UEFI memory map");
 
@@ -140,7 +148,7 @@ fn get_mem_map(st: &SystemTable<Boot>) -> Vec<u8>{
     assert!(page_count != 0, "Memory map entry has zero size");
     return buffer;
 }
-fn get_acpi_table(st: &SystemTable<Boot>) -> *const c_void{
+fn get_acpi_table(st: &SystemTable<Boot>) -> *const c_void {
     use uefi::table::cfg::ACPI2_GUID;
     for cte in st.config_table() {
         if cte.guid == ACPI2_GUID {
@@ -165,7 +173,7 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     st.boot_services().stall(3_000_000);
 
     load_kernel(&st);
-    
+
     st.boot_services().stall(3_000_000);
 
     shutdown(image, st);
