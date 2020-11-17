@@ -18,6 +18,7 @@ use core::slice;
 use uefi::prelude::*;
 use uefi::table::boot::MemoryDescriptor;
 
+
 fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
@@ -27,47 +28,20 @@ fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     use uefi::proto::media::fs::SimpleFileSystem;
     use uefi::table::boot::AllocateType;
     use uefi::table::boot::MemoryType;
-
+    use uefi::proto::media::file::RegularFile;
+    use uefi::proto::media::file::FileInfo;
     let sfs=bt.locate_protocol::<SimpleFileSystem>().expect("sfs failure").unwrap();
     let sfs=unsafe {&mut *sfs.get() };
     let mut directory=sfs.open_volume().unwrap().unwrap();
-
-    let mut buffer=vec![0;256];
-    let file_info=directory.read_entry(&mut buffer).expect("Couldn't read entry").unwrap();
-/*
-    let root_device = bt
-        .handle_protocol::<LoadedImage>(image)
-        .expect("No LoadedImage protocol")
-        .expect("No LoadedImage Protocol 2")
-        .get()
-        .as_ref()
-        .expect("No loadedimage 3")
-        .device();
-    let mut kernel_file = bt
-        .handle_protocol::<SimpleFileSystem>(root_device)
-        .expect("no sfs 1")
-        .expect("no sfs 2")
-        .get()
-        .as_ref()
-        .expect("no sfs 3")
-        .open_volume()
-        .expect("open volume failure")
-        .expect("open volume failure 2");
-    let fi_buf = unsafe {
-        slice::from_raw_parts_mut(
-            bt.allocate_pages(AllocateType::AnyPages, MemoryType::LOADER_DATA, 1)
-                .expect("Couldn't allocate info page")
-                .expect("Couldn't allocate info page 2") as *mut u8,
-            4096,
-        )
-    };
-    use uefi::proto::media::file::FileInfo;
-
-    kernel_file
-        .get_info::<FileInfo>(fi_buf)
-        .expect("Couldn't get file info");
-
-    let _kernel_file_handle = kernel_file.open("kernel", FileMode::Read, FileAttribute::READ_ONLY);
+    let kernel_file=directory.open("kernel",
+                                   FileMode::Read,FileAttribute::empty()).expect("Open failure").unwrap();
+    let mut kernel_file=unsafe{RegularFile::new(kernel_file)};
+    
+    let mut info_buffer=vec![0;256];
+    let file_size=
+        kernel_file.get_info::<FileInfo>(&mut info_buffer).expect("File info problem").unwrap().file_size();
+    
+    drop(info_buffer);
     // Reserve location for final kernel so it doesn't get used by loaded file.
     if cfg!(target_arch = "x86_64") {
         // On x86 save 4M (1024 pages) at 0x100000.
@@ -76,29 +50,30 @@ fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
             MemoryType::LOADER_DATA,
             1024,
         );
-        bt.memset(0x100000 , 4*1024*1024,0)
+        unsafe{bt.memset(0x100000 as *mut u8, 4*1024*1024,0)};
     } else if cfg!(target_arch = "aarch64") {
         // XXX
     }
-    // Get the file size
 
-    // Get space for the file
-    //    let file_data_ptr=bt.allocate_pool(AnyPages,XXX);
+    let mut image_buf=vec![0u8;file_size as usize];
     // Read the file
+
+    let read_size=kernel_file.read(image_buf.get_mut(..).unwrap()).expect("Read error").unwrap() as u64;
+    assert!(read_size == file_size);
 
     // Check the signature
 
+    // XXX
+    
     // Move Loadable segments
     // x86_64: Make sure they are in the 4M region at 0x100000?
 
-    // Clear BSS
-
+    
     // Get memory map
 
     // Get acpi tables
 
     // Jump to start address
-*/
 
     // Shouldn't get here.
     error!("How'd I get here?");
@@ -118,7 +93,7 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     check_revision(st.uefi_revision());
     st.boot_services().stall(3_000_000);
 
-    unsafe {load_kernel(image, &st);}
+    load_kernel(image, &st);
     
     st.boot_services().stall(3_000_000);
 
