@@ -15,10 +15,12 @@ extern crate rlibc;
 
 use core::mem;
 use core::slice;
+use core::ffi::c_void;
 use uefi::prelude::*;
 use uefi::table::boot::MemoryDescriptor;
 
 fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64>{
+    // x86_64: Make sure they are in the 4M region at 0x100000?
     use elf_rs::*;
     if let Elf::Elf64(e) = Elf::from_bytes(buf).unwrap() {
         for p in e.program_header_iter() {
@@ -35,7 +37,7 @@ fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64>{
     None
 }
 
-fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
+fn load_kernel(st: & SystemTable<Boot>) {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::file::File;
@@ -65,7 +67,7 @@ fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
             AllocateType::Address(0x100000),
             MemoryType::LOADER_DATA,
             1024,
-        );
+        ).expect("Dummy memory alloc failed").unwrap();
         unsafe{bt.memset(0x100000 as *mut u8, 4*1024*1024,0)};
     } else if cfg!(target_arch = "aarch64") {
         // XXX
@@ -82,18 +84,70 @@ fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     // XXX
     
     // Move Loadable segments
-    // x86_64: Make sure they are in the 4M region at 0x100000?
 
-    locate_elf(&bt,&image_buf);
+    let entry = locate_elf(&bt,&image_buf).expect("No program entry");
     
     // Get memory map
-
+    let map_vec=get_mem_map(&st);
+    let mem_map=map_vec.as_ptr() as *const c_void;
     // Get acpi tables
+    let acpi_table = get_acpi_table(&st);
 
+    // Exit boot services
+
+    
     // Jump to start address
+    type KernelEntry = extern "C" fn(*const c_void, *const c_void) -> c_void;
+    let entry=unsafe{mem::transmute::<u64,KernelEntry>(entry)};
 
+
+    
+    entry(acpi_table,mem_map);
     // Shouldn't get here.
     error!("How'd I get here?");
+}
+use alloc::vec::Vec;
+fn get_mem_map(st: &SystemTable<Boot>) -> Vec<u8>{
+    
+    let bt=st.boot_services();
+    let map_sz=bt.memory_map_size();
+    let buf_sz=map_sz+8*mem::size_of::<MemoryDescriptor>();
+    let mut buffer=Vec::with_capacity(buf_sz);
+    unsafe{
+        buffer.set_len(buf_sz);
+    }
+     let (_key, desc_iter) = bt
+        .memory_map(&mut buffer)
+        .expect_success("Failed to retrieve UEFI memory map");
+
+    // Collect the descriptors into a vector
+    let descriptors = desc_iter.copied().collect::<Vec<_>>();
+
+    // Ensured we have at least one entry.
+    // Real memory maps usually have dozens of entries.
+    assert!(!descriptors.is_empty(), "Memory map is empty");
+
+    // This is pretty much a sanity test to ensure returned memory
+    // isn't filled with random values.
+    let first_desc = descriptors[0];
+
+    #[cfg(target_arch = "x86_64")]
+    {
+        let phys_start = first_desc.phys_start;
+        assert_eq!(phys_start, 0, "Memory does not start at address 0");
+    }
+    let page_count = first_desc.page_count;
+    assert!(page_count != 0, "Memory map entry has zero size");
+    return buffer;
+}
+fn get_acpi_table(st: &SystemTable<Boot>) -> *const c_void{
+    use uefi::table::cfg::ACPI2_GUID;
+    for cte in st.config_table() {
+        if cte.guid == ACPI2_GUID {
+            return cte.address;
+        }
+    }
+    return 0 as *const c_void;
 }
 
 #[entry]
@@ -110,7 +164,7 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     check_revision(st.uefi_revision());
     st.boot_services().stall(3_000_000);
 
-    load_kernel(image, &st);
+    load_kernel(&st);
     
     st.boot_services().stall(3_000_000);
 
