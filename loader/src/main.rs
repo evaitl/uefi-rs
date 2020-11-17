@@ -3,6 +3,8 @@
 #![feature(asm)]
 #![feature(abi_efiapi)]
 
+#![allow(unused_imports)] // XXX remove later
+
 #[macro_use]
 extern crate log;
 #[macro_use]
@@ -14,10 +16,9 @@ extern crate rlibc;
 use core::mem;
 use core::slice;
 use uefi::prelude::*;
-use uefi::proto::media::file::FileHandle;
 use uefi::table::boot::MemoryDescriptor;
 
-fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
+fn load_kernel(image: Handle, st: & SystemTable<Boot>) {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::file::File;
@@ -27,6 +28,13 @@ fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
     use uefi::table::boot::AllocateType;
     use uefi::table::boot::MemoryType;
 
+    let sfs=bt.locate_protocol::<SimpleFileSystem>().expect("sfs failure").unwrap();
+    let sfs=unsafe {&mut *sfs.get() };
+    let mut directory=sfs.open_volume().unwrap().unwrap();
+
+    let mut buffer=vec![0;256];
+    let file_info=directory.read_entry(&mut buffer).expect("Couldn't read entry").unwrap();
+/*
     let root_device = bt
         .handle_protocol::<LoadedImage>(image)
         .expect("No LoadedImage protocol")
@@ -59,7 +67,7 @@ fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
         .get_info::<FileInfo>(fi_buf)
         .expect("Couldn't get file info");
 
-    let kernel_file_handle = kernel_file.open("kernel", FileMode::Read, FileAttribute::READ_ONLY);
+    let _kernel_file_handle = kernel_file.open("kernel", FileMode::Read, FileAttribute::READ_ONLY);
     // Reserve location for final kernel so it doesn't get used by loaded file.
     if cfg!(target_arch = "x86_64") {
         // On x86 save 4M (1024 pages) at 0x100000.
@@ -68,6 +76,7 @@ fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
             MemoryType::LOADER_DATA,
             1024,
         );
+        bt.memset(0x100000 , 4*1024*1024,0)
     } else if cfg!(target_arch = "aarch64") {
         // XXX
     }
@@ -89,17 +98,17 @@ fn load_kernel(image: Handle, st: SystemTable<Boot>) -> ! {
     // Get acpi tables
 
     // Jump to start address
+*/
 
     // Shouldn't get here.
     error!("How'd I get here?");
-    shutdown(image, st);
 }
 
 #[entry]
 fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     // Initialize utilities (logging, memory allocation...)
     uefi_services::init(&st).expect_success("Failed to initialize utilities");
-    let bt = st.boot_services();
+
     // Reset the console before running all the other tests.
     st.stdout()
         .reset(false)
@@ -109,7 +118,8 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     check_revision(st.uefi_revision());
     st.boot_services().stall(3_000_000);
 
-    load_kernel(image, st);
+    unsafe {load_kernel(image, &st);}
+    
     st.boot_services().stall(3_000_000);
 
     shutdown(image, st);
