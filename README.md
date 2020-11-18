@@ -1,3 +1,23 @@
+# loader
+
+Based on [uefi-rs](https://github.com/rust-osdev/uefi-rs). I had some
+building problems when trying to use that as a library, so we are just
+building here.
+
+My (eav) devlog is [here](./devlog-eav.md). 
+
+- Go to the "loader" directory and do a "./build.py build"
+
+- Get the minimal [kernel](https://github.com/evaitl/x86_min_kernel) and
+build that somewhere. Copy the binary into the
+target/x86_64-unknown-uefi/debug/esp directory.
+
+- Now go back to loader and do a "./build.py run"
+
+This should run a minimal rust uefi loader that grabs the elf binary
+called kernel in the esp directory and starts it.
+
+
 # uefi-rs
 
 [![Crates.io](https://img.shields.io/crates/v/uefi)](https://crates.io/crates/uefi)

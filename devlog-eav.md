@@ -24,6 +24,15 @@ check the signature.
 None of this really matters though. We just have to do some slides and
 we have more than enough to say for slides.
 
+
+Tested the loader, it didn't appear to work. Chased it down. It turns
+out that the old "scribble on vga buffer" doesn't work any more.  I
+changed the kernel to scribble on the serial port instead. Everything works. 
+
+I'll add signature checking tomorrow. Gotta go play AC Vahalla....
+
+
+
 Mon Nov 16:
 
 Looking for an arm64 ovmf firmware. I don't want to hassle with a

@@ -29,6 +29,10 @@ fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64> {
                 let paddr = ph.paddr() as usize;
                 let fsize = ph.filesz() as usize;
                 unsafe { bt.memmove(paddr as *mut u8, &buf[offset], fsize) };
+                info!("Moving {} from {} to {:#0x}",
+                      fsize, offset, paddr);
+                info!("First few bytes: {:02x} {:02x} {:02x} {:02x}",
+                      buf[offset],buf[offset+1],buf[offset+2],buf[offset+3]);
             }
         }
         return Some(e.header().entry_point());
@@ -36,7 +40,7 @@ fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64> {
     None
 }
 
-fn load_kernel(st: &SystemTable<Boot>) {
+fn load_kernel(image: uefi::Handle, st: SystemTable<Boot>) ->! {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::file::File;
@@ -98,6 +102,7 @@ fn load_kernel(st: &SystemTable<Boot>) {
     // Move Loadable segments
 
     let entry = locate_elf(&bt, &image_buf).expect("No program entry");
+    info!("Jumping to kernel at address {:#x}", entry);
 
     // Get memory map
     let map_vec = get_mem_map(&st);
@@ -105,16 +110,20 @@ fn load_kernel(st: &SystemTable<Boot>) {
     // Get acpi tables
     let acpi_table = get_acpi_table(&st);
 
-    // Exit boot services
+
+    // Exit boot services    
+    let max_mmap_size =
+        st.boot_services().memory_map_size() + 8 * mem::size_of::<MemoryDescriptor>();
+    let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
+    st.exit_boot_services(image, &mut mmap_storage[..])
+      .expect_success("Failed to exit boot services");
 
     // Jump to start address
-    type KernelEntry = extern "C" fn(*const c_void, *const c_void) -> c_void;
+    type KernelEntry = extern "C" fn(*const c_void, *const c_void) -> !;
     let entry = unsafe { mem::transmute::<u64, KernelEntry>(entry) };
-
     entry(acpi_table, mem_map);
-    // Shouldn't get here.
-    error!("How'd I get here?");
 }
+
 use alloc::vec::Vec;
 fn get_mem_map(st: &SystemTable<Boot>) -> Vec<u8> {
     let bt = st.boot_services();
@@ -163,54 +172,20 @@ fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     // Initialize utilities (logging, memory allocation...)
     uefi_services::init(&st).expect_success("Failed to initialize utilities");
 
-    // Reset the console before running all the other tests.
+    for m in st.stdout().modes() {
+        info!("mode avail: {:?}",m);
+    }
+    let best_mode = st.stdout()
+        .modes()
+        .nth(0)
+        .unwrap()
+        .expect("Warnings encountered while querying text mode");
     st.stdout()
-        .reset(false)
-        .expect_success("Failed to reset stdout");
-
-    // Ensure the tests are run on a version of UEFI we support.
-    check_revision(st.uefi_revision());
-    st.boot_services().stall(3_000_000);
-
-    load_kernel(&st);
-
-    st.boot_services().stall(3_000_000);
-
-    shutdown(image, st);
-}
-
-fn check_revision(rev: uefi::table::Revision) {
-    let (major, minor) = (rev.major(), rev.minor());
-
-    info!("UEFI {}.{}", major, minor / 10);
-
-    assert!(major >= 2, "Running on an old, unsupported version of UEFI");
-    assert!(
-        minor >= 30,
-        "Old version of UEFI 2, some features might not be available."
-    );
-}
-
-fn shutdown(image: uefi::Handle, st: SystemTable<Boot>) -> ! {
-    use uefi::table::runtime::ResetType;
-
-    // Get our text output back.
-    st.stdout().reset(false).unwrap_success();
-
-    info!("Testing complete, shutting down in 3 seconds...");
-    st.boot_services().stall(3_000_000);
-
-    // Exit boot services as a proof that it works :)
-    let max_mmap_size =
-        st.boot_services().memory_map_size() + 8 * mem::size_of::<MemoryDescriptor>();
-    let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
-    let (st, _iter) = st
-        .exit_boot_services(image, &mut mmap_storage[..])
-        .expect_success("Failed to exit boot services");
-
-    // Shut down the system
-    let rt = unsafe { st.runtime_services() };
-    rt.reset(ResetType::Shutdown, Status::SUCCESS, None);
+        .set_mode(best_mode)
+        .expect_success("Failed to change text mode");
+    info!("Set text mode to {:?}",best_mode);
+    
+    load_kernel(image, st);
 }
 
 /*
