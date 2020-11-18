@@ -1,3 +1,40 @@
+Wed Nov 18:
+
+Today, I need to create a signing tool, sign the kernel image, then
+add code to the loader to check the signature.
+
+Created new git [repo](https://github.com/evaitl/ksigner) for the
+signer.
+
+Signer works. Ran into a problem adding the signature verifier to the loader:
+
+    Compiling sha2 v0.9.2
+    Compiling uefi-services v0.3.0 (/home/evaitl/git/UGA/CSCI8965/project/uefi-rs/uefi-services)
+    LLVM ERROR: Do not know how to split the result of this operator!
+
+    error: could not compile `sha2`
+
+Looking into it....
+
+Looks like the C code is broken for sha2. Needed to turn on the "asm" feature:
+
+
+    [dependencies.sha2]
+    default-features=false
+    features=["asm"]
+
+
+When you "optimize" your code so hard it breaks the compiler, you are
+probably doing it wrong.
+
+Shit. I can compile "asm", but I can't link. I think it pulls in libc
+for some reason, which we don't have.
+
+Found something that works: Turn off the default features for several
+package so they don't pull in std and turn on a "force-soft" feature
+for sha2. I have a build again.
+
+
 Tue Nov 17:
 
 

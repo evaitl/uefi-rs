@@ -29,18 +29,37 @@ fn locate_elf(bt: &BootServices, buf: &[u8]) -> Option<u64> {
                 let paddr = ph.paddr() as usize;
                 let fsize = ph.filesz() as usize;
                 unsafe { bt.memmove(paddr as *mut u8, &buf[offset], fsize) };
-                info!("Moving {} from {} to {:#0x}",
-                      fsize, offset, paddr);
-                info!("First few bytes: {:02x} {:02x} {:02x} {:02x}",
-                      buf[offset],buf[offset+1],buf[offset+2],buf[offset+3]);
+                info!("Moving {} from {} to {:#0x}", fsize, offset, paddr);
+                info!(
+                    "First few bytes: {:02x} {:02x} {:02x} {:02x}",
+                    buf[offset],
+                    buf[offset + 1],
+                    buf[offset + 2],
+                    buf[offset + 3]
+                );
             }
         }
         return Some(e.header().entry_point());
     }
     None
 }
+use core::convert::TryInto;
 
-fn load_kernel(image: uefi::Handle, st: SystemTable<Boot>) ->! {
+fn check_signature(buf: &[u8]) {
+    use ed25519_dalek::{PublicKey, Signature, Verifier, PUBLIC_KEY_LENGTH, SIGNATURE_LENGTH};
+    const PUB_KEY_BYTES: [u8; PUBLIC_KEY_LENGTH] = [
+        6, 32, 37, 222, 9, 179, 61, 174, 96, 199, 83, 205, 245, 2, 244, 105, 163, 36, 203, 25, 133,
+        97, 181, 21, 104, 56, 240, 5, 166, 23, 231, 53,
+    ];
+    let pub_key = PublicKey::from_bytes(&PUB_KEY_BYTES).unwrap();
+    let len = buf.len() - SIGNATURE_LENGTH;
+    let sig = Signature::new(buf[len..].try_into().unwrap());
+    pub_key
+        .verify(&buf[..len], &sig)
+        .expect("Signature failure");
+}
+
+fn load_kernel(image: uefi::Handle, st: SystemTable<Boot>) -> ! {
     let bt = st.boot_services();
     use uefi::proto::loaded_image::LoadedImage;
     use uefi::proto::media::file::File;
@@ -97,7 +116,7 @@ fn load_kernel(image: uefi::Handle, st: SystemTable<Boot>) ->! {
 
     // Check the signature
 
-    // XXX
+    check_signature(&image_buf);
 
     // Move Loadable segments
 
@@ -110,13 +129,12 @@ fn load_kernel(image: uefi::Handle, st: SystemTable<Boot>) ->! {
     // Get acpi tables
     let acpi_table = get_acpi_table(&st);
 
-
-    // Exit boot services    
+    // Exit boot services
     let max_mmap_size =
         st.boot_services().memory_map_size() + 8 * mem::size_of::<MemoryDescriptor>();
     let mut mmap_storage = vec![0; max_mmap_size].into_boxed_slice();
     st.exit_boot_services(image, &mut mmap_storage[..])
-      .expect_success("Failed to exit boot services");
+        .expect_success("Failed to exit boot services");
 
     // Jump to start address
     type KernelEntry = extern "C" fn(*const c_void, *const c_void) -> !;
@@ -171,20 +189,6 @@ fn get_acpi_table(st: &SystemTable<Boot>) -> *const c_void {
 fn efi_main(image: Handle, st: SystemTable<Boot>) -> Status {
     // Initialize utilities (logging, memory allocation...)
     uefi_services::init(&st).expect_success("Failed to initialize utilities");
-
-    for m in st.stdout().modes() {
-        info!("mode avail: {:?}",m);
-    }
-    let best_mode = st.stdout()
-        .modes()
-        .nth(0)
-        .unwrap()
-        .expect("Warnings encountered while querying text mode");
-    st.stdout()
-        .set_mode(best_mode)
-        .expect_success("Failed to change text mode");
-    info!("Set text mode to {:?}",best_mode);
-    
     load_kernel(image, st);
 }
 
