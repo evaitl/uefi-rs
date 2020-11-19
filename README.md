@@ -8,7 +8,7 @@ building here.
 
 My (eav) devlog is [here](./devlog-eav.md). 
 
-Build/test instructions:
+## Build/test instructions:
 
 - Checkout the [kernel](https://github.com/evaitl/x86_min_kernel) and
   build it. You should get a file called `min_kernel`, which is the
@@ -21,7 +21,7 @@ Build/test instructions:
   
 - Sign the kernel. Copy it somewhere as `kernel` and sign it with
   `./ksigner -l keypair.json -S kernel`. This will tack a signature
-  onto the end of the file and increse its size by 64 bytes. 
+  onto the end of the file and increase its size by 64 bytes. 
   
 - Checkout our [uefi-rs](https://github.com/evaitl/uefi-rs.git) tree.
   Go to the loader subdirectory and type `./build.py build` to create
@@ -34,7 +34,7 @@ Build/test instructions:
 
 The loader will say a few things on the qemu screen, which are also
 echoed to the console. The loader then jumps to the kernel, which
-spews "Hello world from the kernel" to the seriall port. QEMU echos
+spews "Hello world from the kernel" to the serial port. QEMU echos
 this to the console.
 
 
