@@ -30,9 +30,55 @@ probably doing it wrong.
 Shit. I can compile "asm", but I can't link. I think it pulls in libc
 for some reason, which we don't have.
 
-Found something that works: Turn off the default features for several
-package so they don't pull in std and turn on a "force-soft" feature
-for sha2. I have a build again.
+Found something that works: Turn off the default features for a couple
+packages so they don't pull in std and turn on a "force-soft" feature
+for sha2. I have a build again. In the loader Cargo file we need:
+
+    [dependencies.ed25519-dalek]
+    version="^1.0.1"
+    default-features=false
+    features=["u64_backend"]
+    [dependencies.digest]
+    version="^0.9.0"
+    default-features=false
+    features=[]
+    [dependencies.sha2]
+    version="0.9.2"
+    default-features=false
+    features=["force-soft"]
+
+
+
+Build/test instructions:
+
+- Checkout the [kernel](https://github.com/evaitl/x86_min_kernel) and
+  build it. You should get a file called `min_kernel`, which is the
+  target binary.
+  
+- Checkout the [signing](https://github.com/evaitl/ksigner)
+  tool. Build it, which gets you a desktop binary called
+  `ksigner`. The keypair for the signing tool is in the ksigner repo
+  and is called `keypair.json`
+  
+- Sign the kernel. Copy it somewhere as `kernel` and sign it with
+  `./ksigner -l keypair.json -S kernel`. This will tack a signature
+  onto the end of the file and increse its size by 64 bytes. 
+  
+- Checkout our [uefi-rs](https://github.com/evaitl/uefi-rs.git) tree.
+  Go to the loader subdirectory and type `./build.py build` to create
+  the loader. 
+  
+- Copy your signed kernel to the
+  `uefi-rs/target/x86_64-unknown/uefi/debug/esp` directory.
+  
+- Now type `./build.py run` in the loader directory. 
+
+The loader will say a few things on the qemu screen, which are also
+echoed to the console. The loader then jumps to the kernel, which
+spews "Hello world from the kernel" to the seriall port. QEMU echos
+this to the console.
+
+
 
 
 Tue Nov 17:
