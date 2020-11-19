@@ -1,4 +1,4 @@
-Wed Nov 18:
+## Wed Nov 18:
 
 Today, I need to create a signing tool, sign the kernel image, then
 add code to the loader to check the signature.
@@ -81,7 +81,7 @@ this to the console.
 
 
 
-Tue Nov 17:
+## Tue Nov 17:
 
 
 Sadly the uefi Result type is private, so I can't create a function
@@ -115,8 +115,7 @@ changed the kernel to scribble on the serial port instead. Everything works.
 I'll add signature checking tomorrow. Gotta go play AC Vahalla....
 
 
-
-Mon Nov 16:
+## Mon Nov 16:
 
 Looking for an arm64 ovmf firmware. I don't want to hassle with a
 cross build of edk2. Found it
