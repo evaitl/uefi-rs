@@ -1,21 +1,41 @@
 # loader
 
+A signature checking UEFI loader for elf files. 
+
 Based on [uefi-rs](https://github.com/rust-osdev/uefi-rs). I had some
 building problems when trying to use that as a library, so we are just
 building here.
 
 My (eav) devlog is [here](./devlog-eav.md). 
 
-- Go to the "loader" directory and do a "./build.py build"
+Build/test instructions:
 
-- Get the minimal [kernel](https://github.com/evaitl/x86_min_kernel) and
-build that somewhere. Copy the binary into the
-target/x86_64-unknown-uefi/debug/esp directory.
+- Checkout the [kernel](https://github.com/evaitl/x86_min_kernel) and
+  build it. You should get a file called `min_kernel`, which is the
+  target binary.
+  
+- Checkout the [signing](https://github.com/evaitl/ksigner)
+  tool. Build it, which gets you a desktop binary called
+  `ksigner`. The keypair for the signing tool is in the ksigner repo
+  and is called `keypair.json`
+  
+- Sign the kernel. Copy it somewhere as `kernel` and sign it with
+  `./ksigner -l keypair.json -S kernel`. This will tack a signature
+  onto the end of the file and increse its size by 64 bytes. 
+  
+- Checkout our [uefi-rs](https://github.com/evaitl/uefi-rs.git) tree.
+  Go to the loader subdirectory and type `./build.py build` to create
+  the loader. 
+  
+- Copy your signed kernel to the
+  `uefi-rs/target/x86_64-unknown/uefi/debug/esp` directory.
+  
+- Now type `./build.py run` in the loader directory. 
 
-- Now go back to loader and do a "./build.py run"
-
-This should run a minimal rust uefi loader that grabs the elf binary
-called kernel in the esp directory and starts it.
+The loader will say a few things on the qemu screen, which are also
+echoed to the console. The loader then jumps to the kernel, which
+spews "Hello world from the kernel" to the seriall port. QEMU echos
+this to the console.
 
 
 # uefi-rs
