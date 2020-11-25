@@ -10,6 +10,8 @@ My (eav) devlog is [here](./devlog-eav.md).
 
 ## Build/test instructions:
 
+- Prerequisites: Linux OS, QEMU, hardware virtualization, and Rust. This could build on a non-Linux OS, but it hasn't been tested to run with QEMU on non-Linux machines. If you're using a Linux VM that does not have hardware virtualization, make sure to comment out lines 211 and 213 in build.py in the loader folder. This will remove the "--enable-kvm" option for QEMU.
+
 - Checkout the [kernel](https://github.com/evaitl/x86_min_kernel) and
   build it. You should get a file called `min_kernel`, which is the
   target binary.
@@ -31,6 +33,9 @@ My (eav) devlog is [here](./devlog-eav.md).
   `uefi-rs/target/x86_64-unknown/uefi/debug/esp` directory.
   
 - Now type `./build.py run` in the loader directory. 
+
+- If `./build.py run` does not work for you, you can try manually starting qemu with the command below. Remove the `--enable-kvm` option if you don't have hardware virtualization, and change the paths to the files to the correct paths. If you don't have the OVMF_CODE.fd and OVMF_VARS.fd files, they can be extracted from here https://ubuntu.pkgs.org/18.04/ubuntu-universe-i386/ovmf_0~20180205.c0d9813c-2_all.deb.html . 
+`./qemu-system-x86_64.exe -nodefaults -machine q35 -smp 3 -m 128M --enable-kvm -drive if=pflash,format=raw,file=/usr/share/ovmf/x64/OVMF_CODE.fd,readonly=on -drive if=pflash,format=raw,file=/usr/share/ovmf/x64/OVMF_VARS.fd,readonly=on -drive format=raw,file=fat:rw:/uefi-rs/target/x86_64-unknown-uefi/debug/esp -serial stdio -qmp pipe:qemu-monitor -device isa-debug-exit,iobase=0xf4,iosize=0x04 -vga std`
 
 The loader will say a few things on the qemu screen, which are also
 echoed to the console. The loader then jumps to the kernel, which
